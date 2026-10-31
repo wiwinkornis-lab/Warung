@@ -36,6 +36,7 @@ input{width:100%;font:inherit;background:var(--card);color:var(--ink);padding:12
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-database-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-auth-compat.min.js"></script>
 <script>
 if(typeof firebase==="undefined"){document.getElementById("app").innerHTML="<h1>Warung</h1><p>Gagal memuat. Periksa koneksi internet lalu muat ulang.</p>";throw new Error("firebase gagal dimuat")}
 firebase.initializeApp({
@@ -47,7 +48,7 @@ firebase.initializeApp({
   messagingSenderId:"10734604909",
   appId:"1:10734604909:web:e3e8facbac2f4e37cd6564"
 });
-const db=firebase.database();
+const db=firebase.database(),auth=firebase.auth();
 const $=id=>document.getElementById(id);
 const rp=n=>"Rp"+Number(n).toLocaleString("id-ID");
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -61,7 +62,11 @@ const gagal=e=>msg("Gagal: "+(e&&e.message||e)+" (cek tab Aturan di Firebase)");
 function start(){
   db.ref("produk").on("value",s=>{produk=s.val()||{};render()},gagal);
   db.ref("config/rekening").on("value",s=>{rek=s.val()||"";render()},gagal);
-  db.ref("kasir").on("value",s=>{akun=s.val()||{};render()},gagal);
+  auth.onAuthStateChanged(u=>{
+    if(u){kasir=u.email;mulai()}
+    else{kasir=null;if(tOrd){db.ref("pesanan").off();tOrd=false;seen=null;orders={}}}
+    render();
+  });
   watchMine();
 }
 function watchMine(){if(myId)db.ref("pesanan/"+myId).on("value",s=>{mine=s.val();render()})}
@@ -80,21 +85,11 @@ function kirim(){
 }
 
 /* ---------- akun & notifikasi kasir ---------- */
-function bersih(u){return u.trim().toLowerCase().replace(/[^a-z0-9_-]/g,"")}
 function login(){
-  const u=bersih($("lu").value),p=$("lp").value;
-  if(!akun[u]||akun[u].pin!==p)return msg("Username atau PIN salah");
-  kasir=u;mulai();
+  const em=$("lu").value.trim(),pw=$("lp").value;
+  if(!em||!pw)return msg("Isi email dan password");
+  auth.signInWithEmailAndPassword(em,pw).catch(()=>msg("Gagal masuk: email atau password salah"));
 }
-function daftar(){
-  const u=bersih($("lu").value),p=$("lp").value.trim();
-  if(!u||p.length<4)return msg("Isi username (huruf/angka) dan PIN minimal 4 karakter");
-  if(akun[u])return msg("Username sudah dipakai");
-  if(Object.keys(akun).length&&!kasir)return msg("Hanya kasir yang boleh menambah akun");
-  db.ref("kasir/"+u).set({pin:p});
-  if(!kasir){kasir=u;mulai()}else go();
-}
-function hapusAkun(u){if(u==kasir)return msg("Tidak bisa menghapus akun yang sedang dipakai");if(armed!="a"+u){armed="a"+u;return msg("Ketuk Hapus sekali lagi untuk menghapus akun")}armed="";db.ref("kasir/"+u).remove().catch(gagal)}
 function mulai(){
   mode="kasir";
   try{ctx=ctx||new(window.AudioContext||window.webkitAudioContext)()}catch(e){}
@@ -217,10 +212,9 @@ function vBeli(){
   return h+`<p class="foot"><a href="#" onclick="mode='kasir';go();return false">Masuk kasir</a></p>`;
 }
 function vLogin(){
-  const ada=Object.keys(akun).length;
-  return `<h1>Kasir</h1><p>${ada?"Masuk dengan akun kasir.":"Belum ada akun kasir. Buat akun pertama."}</p>
-    <input id="lu" placeholder="Username" autocapitalize="none"><input id="lp" type="password" placeholder="PIN (minimal 4 karakter)">
-    ${ada?`<button class="big" onclick="login()">Masuk</button>`:`<button class="big y" onclick="daftar()">Buat akun kasir</button>`}
+  return `<h1>Kasir</h1><p>Masuk dengan akun kasir.</p>
+    <input id="lu" type="email" placeholder="Email kasir" autocapitalize="none"><input id="lp" type="password" placeholder="Password">
+    <button class="big" onclick="login()">Masuk</button>
     <p class="foot"><a href="#" onclick="mode='beli';go();return false">Kembali ke halaman pembeli</a></p>`;
 }
 function kartu(o){
@@ -260,10 +254,9 @@ function vKasir(){
       <input id="rk" placeholder="BRI 1234567890 a.n. Nama" value="${esc(rek)}"><button class="big y" onclick="simpanRek()">Simpan rekening</button>`;
   }
   if(tab=="akun"){
-    h+=Object.keys(akun).map(u=>`<div class="row"><b>${esc(u)}</b>${u==kasir?"<span class=\"st\">kamu</span>":`<button class="r" onclick="hapusAkun('${u}')">Hapus</button>`}</div>`).join("");
-    h+=`<p style="margin:16px 0 0"><b>Tambah akun kasir</b></p><input id="lu" placeholder="Username" autocapitalize="none"><input id="lp" placeholder="PIN (minimal 4 karakter)"><button class="big" onclick="daftar()">Buat akun</button>`;
+    h+=`<div class="card">Masuk sebagai <b>${esc(kasir)}</b><br><small>Akun kasir baru ditambahkan lewat Firebase Console: Authentication, Users, Add user.</small></div><button class="big r" onclick="auth.signOut()">Keluar</button>`;
   }
-  return h+`<p class="foot"><a href="#" onclick="kasir=null;mode='beli';go();return false">Keluar</a></p>`;
+  return h+`<p class="foot"><a href="#" onclick="mode='beli';go();return false">Lihat halaman pembeli</a></p>`;
 }
 function render(f){
   const a=document.activeElement,fid=a&&a.tagName=="INPUT"?a.id:"",v={};
@@ -277,7 +270,6 @@ function render(f){
 }
 render(1);
 start();
-db.ref("produk").once("value",x=>{if(!x.exists())db.ref("produk").set({p1:{nama:"Aqua",harga:5000},p2:{nama:"Pop Mie",harga:7000},p3:{nama:"Qtela",harga:5000},p4:{nama:"Le Minerale",harga:7000}})});
-db.ref("config/rekening").once("value",x=>{if(!x.exists())db.ref("config/rekening").set("BRI 1234567890 a.n. Warung Saya")});
+document.addEventListener("click",()=>{try{ctx=ctx||new(window.AudioContext||window.webkitAudioContext)();ctx.resume()}catch(e){}});
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script></body></html>
