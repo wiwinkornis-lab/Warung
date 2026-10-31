@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="id"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Warung</title>
+<link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#0f5c4d"><link rel="icon" href="icon-192.png"><link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--ink:#12332b;--g:#0f5c4d;--y:#f2b705;--bg:#f4f6f3;--line:#d9e0da;--red:#c8402b;--card:#fff;--lnk:#0f5c4d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ink:#e6efe9;--bg:#0e1714;--line:#2b3b35;--card:#16221e;--lnk:#6fd0b6;color-scheme:dark}}
+:root[data-theme="dark"]{--ink:#e6efe9;--bg:#0e1714;--line:#2b3b35;--card:#16221e;--lnk:#6fd0b6;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 "Trebuchet MS",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+#app{max-width:480px;margin:0 auto;padding:16px}
+h1{margin:0 0 12px;font-size:28px;letter-spacing:-.5px}
+.rek{background:var(--y);color:#12332b;padding:10px 12px;border-radius:8px;margin:10px 0}
+.row,.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.qty{display:flex;align-items:center;gap:12px}
+.qty span{min-width:20px;text-align:center;font-weight:700}
+button{font:inherit;border:0;border-radius:8px;padding:8px 14px;background:var(--line);color:var(--ink);cursor:pointer}
+.qty button{width:40px;height:40px;font-size:20px;background:var(--g);color:#fff}
+.big{width:100%;padding:14px;margin-top:8px;background:var(--g);color:#fff;font-weight:700}
+.y{background:var(--y);color:#12332b;font-weight:700}.r{background:var(--red);color:#fff}
+input{width:100%;font:inherit;background:var(--card);color:var(--ink);padding:12px;border:1px solid var(--line);border-radius:8px;margin:8px 0 0}
+.tabs{display:flex;gap:6px;margin:8px 0}.tabs button{flex:1;padding:8px 2px;font-size:14px}.tabs .on{background:var(--g);color:#fff}
+.acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.st{display:inline-block;padding:2px 8px;border-radius:99px;background:var(--y);color:#12332b;font-size:13px;font-weight:700}
+.ok{background:#bfe6c8}
+.ban{background:var(--red);color:#fff;padding:12px;border-radius:8px;margin-bottom:10px;font-weight:700}
+.foot{text-align:center;margin-top:24px;font-size:14px}.foot a{color:var(--lnk)}
+#toast{display:none;position:fixed;left:12px;right:12px;bottom:16px;max-width:456px;margin:0 auto;background:#12332b;color:#fff;padding:12px 14px;border-radius:10px;z-index:9;font-weight:700}
+#struk{display:none;font:14px/1.4 monospace;width:58mm}
+@media print{body>#app{display:none}#struk{display:block}}
+</style></head><body>
+<div id="app">Memuat...</div><div id="struk"></div><div id="toast"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-database-compat.min.js"></script>
+<script>
+if(typeof firebase==="undefined"){document.getElementById("app").innerHTML="<h1>Warung</h1><p>Gagal memuat. Periksa koneksi internet lalu muat ulang.</p>";throw new Error("firebase gagal dimuat")}
+firebase.initializeApp({
+  apiKey:"AIzaSyBO_QA0IkVzaHVW4FMTAIwtopW3Ye0lM1k",
+  authDomain:"cyra5-dd284.firebaseapp.com",
+  databaseURL:"https://cyra5-dd284-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"cyra5-dd284",
+  storageBucket:"cyra5-dd284.firebasestorage.app",
+  messagingSenderId:"10734604909",
+  appId:"1:10734604909:web:e3e8facbac2f4e37cd6564"
+});
+const db=firebase.database();
+const $=id=>document.getElementById(id);
+const rp=n=>"Rp"+Number(n).toLocaleString("id-ID");
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let produk={},cart={},orders={},akun={},rek="",mode="beli",kasir=null,tab="pesanan",banner="",seen=null,tOrd=false,ctx=null,
+    kc={},kb="tunai",nama="",hp="",bayar="tunai",mine=null,myId=(()=>{try{return localStorage.getItem("myOrder")}catch(e){return null}})();
+const go=()=>render(1);
+
+let tm=0,armed="",ed=null,uang="",bukti="",zoom="",ket="",fil="hari",d1="",d2="";
+const msg=t=>{const e=$("toast");e.textContent=t;e.style.display="block";clearTimeout(tm);tm=setTimeout(()=>{e.style.display="none"},5000)};
+const gagal=e=>msg("Gagal: "+(e&&e.message||e)+" (cek tab Aturan di Firebase)");
+function start(){
+  db.ref("produk").on("value",s=>{produk=s.val()||{};render()},gagal);
+  db.ref("config/rekening").on("value",s=>{rek=s.val()||"";render()},gagal);
+  db.ref("kasir").on("value",s=>{akun=s.val()||{};render()},gagal);
+  watchMine();
+}
+function watchMine(){if(myId)db.ref("pesanan/"+myId).on("value",s=>{mine=s.val();render()})}
+
+/* ---------- pembeli ---------- */
+function ubah(k,d){cart[k]=Math.max(0,(cart[k]||0)+d);go()}
+function norm(n){n=n.replace(/\D/g,"");return n.startsWith("0")?"62"+n.slice(1):n}
+function kirim(){
+  const items=Object.keys(cart).filter(k=>cart[k]>0&&produk[k]).map(k=>({n:produk[k].nama,q:cart[k],h:produk[k].harga}));
+  if(!items.length)return msg("Pilih menu dulu");
+  if(!nama.trim()||norm(hp).length<10)return msg("Isi nama dan nomor WhatsApp");
+  const total=items.reduce((a,i)=>a+i.q*i.h,0);
+  if(bayar=="transfer"&&!bukti&&!ket.trim())return msg("Unggah screenshot bukti transfer, atau isi nama pengirim dan jam transfer");
+  const r=db.ref("pesanan").push({nama:nama.trim(),wa:norm(hp),items,total,bayar,bukti:bayar=="transfer"?bukti:"",ket:bayar=="transfer"?ket.trim():"",dibayar:false,status:"baru",waktu:Date.now()});
+  r.catch(gagal);myId=r.key;try{localStorage.setItem("myOrder",myId)}catch(e){}cart={};bukti="";ket="";watchMine();go();msg("Pesanan terkirim ke kasir");
+}
+
+/* ---------- akun & notifikasi kasir ---------- */
+function bersih(u){return u.trim().toLowerCase().replace(/[^a-z0-9_-]/g,"")}
+function login(){
+  const u=bersih($("lu").value),p=$("lp").value;
+  if(!akun[u]||akun[u].pin!==p)return msg("Username atau PIN salah");
+  kasir=u;mulai();
+}
+function daftar(){
+  const u=bersih($("lu").value),p=$("lp").value.trim();
+  if(!u||p.length<4)return msg("Isi username (huruf/angka) dan PIN minimal 4 karakter");
+  if(akun[u])return msg("Username sudah dipakai");
+  if(Object.keys(akun).length&&!kasir)return msg("Hanya kasir yang boleh menambah akun");
+  db.ref("kasir/"+u).set({pin:p});
+  if(!kasir){kasir=u;mulai()}else go();
+}
+function hapusAkun(u){if(u==kasir)return msg("Tidak bisa menghapus akun yang sedang dipakai");if(armed!="a"+u){armed="a"+u;return msg("Ketuk Hapus sekali lagi untuk menghapus akun")}armed="";db.ref("kasir/"+u).remove().catch(gagal)}
+function mulai(){
+  mode="kasir";
+  try{ctx=ctx||new(window.AudioContext||window.webkitAudioContext)()}catch(e){}
+  if(!tOrd){tOrd=true;db.ref("pesanan").on("value",s=>{
+    orders=s.val()||{};const ks=Object.keys(orders);
+    if(seen)ks.filter(k=>!seen.has(k)&&orders[k].status=="baru").forEach(k=>notif(orders[k]));
+    else{const nb=ks.filter(k=>orders[k].status=="baru").length;if(nb)banner=nb+" pesanan baru menunggu diproses"}
+    seen=new Set(ks);render()},gagal)}
+  go();
+}
+function notif(o){
+  banner="Pesanan baru dari "+o.nama+" · "+rp(o.total)+" · "+(o.bayar=="transfer"?"Transfer":"Tunai");
+  try{navigator.vibrate&&navigator.vibrate([300,150,300]);
+    const g=ctx.createGain(),s=ctx.createOscillator();s.connect(g);g.connect(ctx.destination);
+    s.frequency.value=880;g.gain.value=.3;s.start();s.stop(ctx.currentTime+.5)}catch(e){}
+}
+function siap(k){
+  const o=orders[k];db.ref("pesanan/"+k+"/status").set("ready");
+  const t="Halo "+o.nama+", pesananmu sudah siap diambil. Total "+rp(o.total)+". Terima kasih!";
+  window.open("https://wa.me/"+o.wa+"?text="+encodeURIComponent(t),"_blank");
+}
+function lunas(k){db.ref("pesanan/"+k+"/dibayar").set(true)}
+function selesai(k){db.ref("pesanan/"+k).update({status:"selesai",dibayar:true})}
+function struk(k){
+  const o=orders[k];
+  $("struk").innerHTML="<b>WARUNG</b><br>"+new Date(o.waktu).toLocaleString("id-ID")+"<br>"+esc(o.nama)+"<hr>"+
+    o.items.map(i=>esc(i.n)+"<br>"+i.q+" x "+rp(i.h)+" = "+rp(i.q*i.h)).join("<br>")+
+    "<hr><b>TOTAL "+rp(o.total)+"</b><br>Bayar: "+(o.bayar=="transfer"?"Transfer":"Tunai")+(o.diterima?"<br>Diterima "+rp(o.diterima)+"<br>Kembali "+rp(o.kembali):"")+"<br>Terima kasih!";
+  window.print();
+}
+
+const num=v=>parseInt(String(v||"").replace(/\D/g,""))||0;
+function kt(t,u){u=num(u);if(!u)return"Belanja "+rp(t)+" · isi uang diterima";return u>=t?"Bayar "+rp(u)+" − belanja "+rp(t)+" = Kembalian "+rp(u-t):"Uang kurang "+rp(t-u)}
+function hitung(t){$("kmb").textContent=kt(t,uang)}
+function kemb(k,t,v){const e=$("kc_"+k);if(e)e.textContent=kt(t,v)}
+function bk(o){if(!o.bukti||!o.bukti.startsWith("data:image/"))return"";const z=zoom==o.k;return `<br><img src="${o.bukti}" alt="Bukti transfer" onclick="zoom=zoom=='${o.k}'?'':'${o.k}';go()" style="${z?"max-width:100%":"height:70px"};border-radius:6px;margin-top:6px;cursor:pointer"><br><small>Ketuk gambar untuk ${z?"mengecilkan":"memperbesar"}</small>`}
+function pilihBukti(inp){
+  const f=inp.files&&inp.files[0];if(!f)return msg("Tidak ada file dipilih");msg("Memproses gambar...");
+  const rd=new FileReader();
+  rd.onload=()=>{const im=new Image();im.onload=()=>{
+    const sc=Math.min(1,900/Math.max(im.width,im.height)),c=document.createElement("canvas");
+    c.width=Math.round(im.width*sc);c.height=Math.round(im.height*sc);
+    c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+    let q=.7,d=c.toDataURL("image/jpeg",q);
+    while(d.length>190000&&q>.3){q-=.1;d=c.toDataURL("image/jpeg",q)}
+    if(d.length>190000)return msg("Gambar terlalu besar, coba screenshot lain");
+    bukti=d;go();msg("Bukti transfer siap dikirim");
+  };im.onerror=()=>msg("File bukan gambar");im.src=rd.result};
+  rd.onerror=()=>msg("Gagal membaca file");rd.readAsDataURL(f);
+}
+function rentang(){
+  const n=new Date(),s0=new Date(n.getFullYear(),n.getMonth(),n.getDate()).getTime(),D=864e5;
+  if(fil=="hari")return[s0,s0+D];if(fil=="kemarin")return[s0-D,s0];if(fil=="7")return[s0-6*D,s0+D];
+  if(fil=="bulan")return[new Date(n.getFullYear(),n.getMonth(),1).getTime(),s0+D];
+  if(fil=="tgl"){const a=d1?new Date(d1+"T00:00").getTime():0,b=d2?new Date(d2+"T00:00").getTime()+D:Infinity;return[a,b]}
+  return[0,Infinity];
+}
+function terfilter(){const[a,b]=rentang();return Object.keys(orders).map(k=>({k,...orders[k]})).filter(o=>o.dibayar&&o.waktu>=a&&o.waktu<b).sort((x,y)=>y.waktu-x.waktu)}
+function unduh(){
+  const d=terfilter();if(!d.length)return msg("Tidak ada transaksi di rentang ini");
+  if(typeof XLSX==="undefined")return msg("Library Excel belum termuat, coba lagi");
+  Promise.resolve().then(()=>{
+    const t=d.map(o=>({Tanggal:new Date(o.waktu).toLocaleDateString("id-ID"),Jam:new Date(o.waktu).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}),Nama:o.nama,Item:o.items.map(i=>i.n+" x"+i.q).join(", "),Total:o.total,Metode:MT(o),Diterima:o.diterima||"",Kembali:o.kembali||""}));
+    const m={};d.forEach(o=>o.items.forEach(i=>{m[i.n]=m[i.n]||{Menu:i.n,Jumlah:0,Total:0};m[i.n].Jumlah+=i.q;m[i.n].Total+=i.q*i.h}));
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(t),"Transaksi");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(Object.values(m)),"Per Menu");
+    const sm=x=>d.filter(o=>MT(o)==x),R=[["Tunai",sm("Tunai")],["Transfer",sm("Transfer")]].map(([n,a])=>({Metode:n,Transaksi:a.length,Total:a.reduce((z,o)=>z+o.total,0)}));
+    R.push({Metode:"Total",Transaksi:d.length,Total:d.reduce((z,o)=>z+o.total,0)});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(R),"Ringkasan");
+    XLSX.writeFile(wb,"penjualan-"+new Date().toISOString().slice(0,10)+".xlsx");msg("File Excel siap");
+  }).catch(e=>{if(!e||e.code!="declined")msg("Gagal mengunduh: "+(e&&e.message||e))});
+}
+function kubah(k,d){kc[k]=Math.max(0,(kc[k]||0)+d);go()}
+function jual(){
+  const items=Object.keys(kc).filter(k=>kc[k]>0&&produk[k]).map(k=>({n:produk[k].nama,q:kc[k],h:produk[k].harga}));
+  if(!items.length)return msg("Pilih menu dulu");
+  const total=items.reduce((a,i)=>a+i.q*i.h,0);
+  const dt=kb=="tunai"?num(uang):0;
+  if(kb=="tunai"&&dt&&dt<total)return msg("Uang kurang "+rp(total-dt));
+  db.ref("pesanan").push({nama:"Beli langsung",wa:"",items,total,bayar:kb,diterima:dt,kembali:dt?dt-total:0,dibayar:true,status:"selesai",waktu:Date.now()})
+    .then(()=>{kc={};uang="";msg("Penjualan dicatat: "+rp(total)+(dt?" · kembalian "+rp(dt-total):""));go()}).catch(gagal);
+}
+function contoh(){db.ref("produk").set({p1:{nama:"Aqua",harga:5000},p2:{nama:"Pop Mie",harga:7000},p3:{nama:"Qtela",harga:5000},p4:{nama:"Le Minerale",harga:7000}}).catch(gagal)}
+/* ---------- menu & rekening ---------- */
+function tambah(){
+  const n=$("pn").value.trim(),h=parseInt($("ph").value.replace(/\D/g,""));
+  if(!n||!h)return msg("Isi nama menu dan harga");
+  db.ref("produk").push({nama:n,harga:h}).catch(gagal);$("pn").value="";$("ph").value="";
+}
+function edit(k){ed=k;go()}
+function simpanEdit(k){
+  const n=$("en").value.trim(),hh=parseInt($("eh").value.replace(/\D/g,""));
+  if(!n||!hh)return msg("Nama dan harga harus diisi (harga pakai angka)");
+  db.ref("produk/"+k).update({nama:n,harga:hh}).then(()=>{ed=null;go()}).catch(gagal);
+}
+function hapus(k){if(armed!="p"+k){armed="p"+k;return msg("Ketuk Hapus sekali lagi untuk menghapus menu")}armed="";db.ref("produk/"+k).remove().catch(gagal)}
+function simpanRek(){db.ref("config/rekening").set($("rk").value.trim()).then(()=>msg("Rekening tersimpan")).catch(gagal)}
+
+/* ---------- tampilan ---------- */
+const ST={baru:"Menunggu kasir",ready:"Siap diambil!",selesai:"Selesai"};
+const MT=o=>o.bayar=="transfer"?"Transfer":"Tunai";
+function vBeli(){
+  const ks=Object.keys(produk),total=ks.reduce((a,k)=>a+(cart[k]||0)*produk[k].harga,0);
+  let h="<h1>Warung</h1>";
+  h+=ks.map(k=>`<div class="row"><div><b>${esc(produk[k].nama)}</b><br>${rp(produk[k].harga)}</div>
+    <div class="qty"><button onclick="ubah('${k}',-1)">−</button><span>${cart[k]||0}</span><button onclick="ubah('${k}',1)">+</button></div></div>`).join("")||"<p>Menu belum ada.</p>";
+  h+=`<input id="nm" placeholder="Nama kamu" value="${esc(nama)}" oninput="nama=this.value">
+    <input id="hpn" placeholder="Nomor WhatsApp, contoh 0812..." inputmode="tel" value="${esc(hp)}" oninput="hp=this.value">
+    <div class="tabs">${[["tunai","Bayar tunai"],["transfer","Transfer"]].map(t=>`<button class="${bayar==t[0]?"on":""}" onclick="bayar='${t[0]}';go()">${t[1]}</button>`).join("")}</div>`;
+  h+=`<div class="rek">Rekening transfer: <b>${esc(rek)||"(belum diisi kasir)"}</b>${bayar=="transfer"?`<br>Jumlah: ${rp(total)}`:""}</div>`;
+  if(bayar=="transfer")h+=`<p style="margin:10px 0 0"><b>Bukti transfer</b> (screenshot)</p><label class="big" style="display:block;text-align:center;cursor:pointer">${bukti?"Ganti screenshot":"Pilih screenshot dari galeri"}<input id="bf" type="file" accept="image/*" onchange="pilihBukti(this)" style="position:absolute;opacity:0;width:1px;height:1px"></label><input id="ket" placeholder="Atau tulis: nama pengirim / jam transfer" value="${esc(ket)}" oninput="ket=this.value">`+(bukti?`<img src="${bukti}" alt="Bukti transfer" style="max-width:100%;max-height:220px;border-radius:8px;margin-top:8px">`:"");
+  h+=`<button class="big" onclick="kirim()">Kirim pesanan · ${rp(total)}</button>`;
+  if(mine){
+    const pay=mine.dibayar?"Lunas":(mine.bayar=="transfer"?"Menunggu transfer":"Bayar tunai di warung");
+    h+=`<div class="card" style="margin-top:16px"><b>Pesanan terakhir</b><br>${mine.items.map(i=>esc(i.n)+" x"+i.q).join(", ")}<br>${rp(mine.total)}<br>
+      <span class="st">${ST[mine.status]||""}</span> <span class="st ${mine.dibayar?"ok":""}">${pay}</span>${mine.bukti?' <span class="st ok">Bukti terkirim</span>':""}
+      ${mine.bayar=="transfer"&&!mine.dibayar?`<div class="rek">Transfer ke: <b>${esc(rek)}</b></div>`:""}</div>`;
+  }
+  return h+`<p class="foot"><a href="#" onclick="mode='kasir';go();return false">Masuk kasir</a></p>`;
+}
+function vLogin(){
+  const ada=Object.keys(akun).length;
+  return `<h1>Kasir</h1><p>${ada?"Masuk dengan akun kasir.":"Belum ada akun kasir. Buat akun pertama."}</p>
+    <input id="lu" placeholder="Username" autocapitalize="none"><input id="lp" type="password" placeholder="PIN (minimal 4 karakter)">
+    ${ada?`<button class="big" onclick="login()">Masuk</button>`:`<button class="big y" onclick="daftar()">Buat akun kasir</button>`}
+    <p class="foot"><a href="#" onclick="mode='beli';go();return false">Kembali ke halaman pembeli</a></p>`;
+}
+function kartu(o){
+  return `<div class="card"><b>${esc(o.nama)}</b> <span class="st">${ST[o.status]}</span> <span class="st ${o.dibayar?"ok":""}">${MT(o)} · ${o.dibayar?"Lunas":"Belum bayar"}</span><br>
+    ${o.items.map(i=>esc(i.n)+" x"+i.q).join(", ")}<br><b>${rp(o.total)}</b> · ${new Date(o.waktu).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}
+    ${bk(o)}${o.ket?`<br>Keterangan transfer: ${esc(o.ket)}`:""}${o.diterima?`<br>Diterima ${rp(o.diterima)} · Kembali ${rp(o.kembali)}`:""}${o.bayar=="tunai"&&!o.dibayar?`<input id="ud_${o.k}" data-t="${o.total}" inputmode="numeric" placeholder="Uang diterima (hitung kembalian)" oninput="kemb('${o.k}',${o.total},this.value)"><div id="kc_${o.k}" style="margin-top:6px"></div>`:""}
+    <div class="acts">${o.status=="baru"?`<button class="y" onclick="siap('${o.k}')">Ready + kirim WA</button>`:""}
+    ${!o.dibayar&&o.status!="selesai"?`<button onclick="lunas('${o.k}')">Tandai lunas</button>`:""}
+    ${o.status=="ready"?`<button class="y" onclick="selesai('${o.k}')">Selesai</button>`:""}
+    <button onclick="struk('${o.k}')">Cetak struk</button></div></div>`;
+}
+function vKasir(){
+  if(!kasir)return vLogin();
+  const L=Object.keys(orders).map(k=>({k,...orders[k]})).sort((a,b)=>b.waktu-a.waktu);
+  const nb=L.filter(o=>o.status=="baru").length;
+  let h=`<h1>Kasir</h1>`+(banner?`<div class="ban" onclick="banner='';go()">${esc(banner)} (ketuk untuk tutup)</div>`:"");
+  h+=`<div class="tabs">`+[["pesanan","Pesanan"+(nb?" ("+nb+")":"")],["jual","Jual"],["riwayat","Riwayat"],["menu","Menu"],["akun","Akun"]]
+    .map(t=>`<button class="${tab==t[0]?"on":""}" onclick="tab='${t[0]}';go()">${t[1]}</button>`).join("")+`</div>`;
+  if(tab=="pesanan"){const p=L.filter(o=>o.status!="selesai");h+=p.length?p.map(kartu).join(""):"<p>Belum ada pesanan masuk.</p>"}
+  if(tab=="riwayat"){
+    const d=terfilter(),pm={},sum=m=>d.filter(o=>MT(o)==m).reduce((a,o)=>a+o.total,0);
+    d.forEach(o=>o.items.forEach(i=>{pm[i.n]=(pm[i.n]||0)+i.q}));
+    h+=`<div class="tabs" style="flex-wrap:wrap">${[["hari","Hari ini"],["kemarin","Kemarin"],["7","7 hari"],["bulan","Bulan ini"],["semua","Semua"],["tgl","Pilih tanggal"]].map(t=>`<button class="${fil==t[0]?"on":""}" onclick="fil='${t[0]}';go()">${t[1]}</button>`).join("")}</div>`+(fil=="tgl"?`<div class="row" style="gap:6px"><input id="d1" type="date" value="${d1}" onchange="d1=this.value;go()"><input id="d2" type="date" value="${d2}" onchange="d2=this.value;go()"></div>`:"")+
+    `<div class="card"><b>Uang masuk</b> (${d.length} transaksi)<div class="row" style="margin:8px 0 0"><span>Tunai (${d.filter(o=>MT(o)=="Tunai").length} transaksi)</span><b>${rp(sum("Tunai"))}</b></div><div class="row" style="margin:6px 0 0"><span>Transfer (${d.filter(o=>MT(o)=="Transfer").length} transaksi)</span><b>${rp(sum("Transfer"))}</b></div><div class="row y" style="margin:6px 0 0"><span>Total</span><b>${rp(sum("Tunai")+sum("Transfer"))}</b></div>${Object.keys(pm).length?`<br>Per menu: ${Object.keys(pm).map(n=>esc(n)+" x"+pm[n]).join(" · ")}`:""}<div class="acts"><button class="y" onclick="unduh()">Unduh Excel</button></div></div>`+(d.map(kartu).join("")||"<p>Belum ada transaksi di rentang ini.</p>");
+  }
+  if(tab=="jual"){
+    const ks=Object.keys(produk),tot=ks.reduce((a,k)=>a+(kc[k]||0)*produk[k].harga,0);
+    h+=ks.map(k=>`<div class="row"><div><b>${esc(produk[k].nama)}</b><br>${rp(produk[k].harga)}</div><div class="qty"><button onclick="kubah('${k}',-1)">−</button><span>${kc[k]||0}</span><button onclick="kubah('${k}',1)">+</button></div></div>`).join("")||"<p>Menu masih kosong. Isi dulu di tab Menu.</p>";
+    h+=`<div class="tabs">${[["tunai","Tunai"],["transfer","Transfer"]].map(t=>`<button class="${kb==t[0]?"on":""}" onclick="kb='${t[0]}';go()">${t[1]}</button>`).join("")}</div>${kb=="tunai"?`<input id="uang" inputmode="numeric" placeholder="Uang diterima, contoh 50000" value="${esc(uang)}" oninput="uang=this.value;hitung(${tot})"><div class="rek" id="kmb">${kt(tot,uang)}</div>`:""}<button class="big" onclick="jual()">Catat penjualan · ${rp(tot)}</button>`;
+  }
+  if(tab=="menu"){
+    if(!Object.keys(produk).length)h+=`<p>Menu masih kosong.</p><button class="y" onclick="contoh()">Isi menu contoh</button>`;
+    h+=Object.keys(produk).map(k=>`<div class="row"><div><b>${esc(produk[k].nama)}</b><br>${rp(produk[k].harga)}</div>
+      <div class="acts" style="margin:0"><button onclick="edit('${k}')">Ubah</button><button class="r" onclick="hapus('${k}')">Hapus</button></div></div>`).map((x,i)=>{const k=Object.keys(produk)[i];return ed==k?`<div class="card"><input id="en" value="${esc(produk[k].nama)}"><input id="eh" inputmode="numeric" value="${produk[k].harga}"><div class="acts"><button class="y" onclick="simpanEdit('${k}')">Simpan</button><button onclick="ed=null;go()">Batal</button></div></div>`:x}).join("");
+    h+=`<input id="pn" placeholder="Nama menu baru"><input id="ph" placeholder="Harga, contoh 5000" inputmode="numeric"><button class="big" onclick="tambah()">Tambah menu</button>
+      <p style="margin:20px 0 0"><b>Rekening untuk transfer</b> (tampil ke pembeli)</p>
+      <input id="rk" placeholder="BRI 1234567890 a.n. Nama" value="${esc(rek)}"><button class="big y" onclick="simpanRek()">Simpan rekening</button>`;
+  }
+  if(tab=="akun"){
+    h+=Object.keys(akun).map(u=>`<div class="row"><b>${esc(u)}</b>${u==kasir?"<span class=\"st\">kamu</span>":`<button class="r" onclick="hapusAkun('${u}')">Hapus</button>`}</div>`).join("");
+    h+=`<p style="margin:16px 0 0"><b>Tambah akun kasir</b></p><input id="lu" placeholder="Username" autocapitalize="none"><input id="lp" placeholder="PIN (minimal 4 karakter)"><button class="big" onclick="daftar()">Buat akun</button>`;
+  }
+  return h+`<p class="foot"><a href="#" onclick="kasir=null;mode='beli';go();return false">Keluar</a></p>`;
+}
+function render(f){
+  const a=document.activeElement,fid=a&&a.tagName=="INPUT"?a.id:"",v={};
+  if(!f&&fid=="bf")return;
+  const pos=fid?a.selectionStart:0;
+  if(!f)document.querySelectorAll("#app input").forEach(i=>{if(i.id&&i.type!="file")v[i.id]=i.value});
+  $("app").innerHTML=mode=="kasir"?vKasir():vBeli();
+  if(!f){for(const k in v){const e=$(k);if(e)e.value=v[k]}
+    if(fid&&$(fid)){$(fid).focus();try{$(fid).setSelectionRange(pos,pos)}catch(e){}}}
+  document.querySelectorAll("[id^=ud_]").forEach(e=>kemb(e.id.slice(3),+e.dataset.t,e.value));
+}
+render(1);
+start();
+db.ref("produk").once("value",x=>{if(!x.exists())db.ref("produk").set({p1:{nama:"Aqua",harga:5000},p2:{nama:"Pop Mie",harga:7000},p3:{nama:"Qtela",harga:5000},p4:{nama:"Le Minerale",harga:7000}})});
+db.ref("config/rekening").once("value",x=>{if(!x.exists())db.ref("config/rekening").set("BRI 1234567890 a.n. Warung Saya")});
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script></body></html>
